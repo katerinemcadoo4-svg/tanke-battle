@@ -436,6 +436,11 @@ function draw() {
     for (let e of enemies) drawTank(e);
     for (let b of bullets) drawBullet(b);
     for (let e of explosions) drawExplosion(e);
+
+    // Debug: show player status
+    ctx.fillStyle = '#000';
+    ctx.font = '16px monospace';
+    ctx.fillText('state:' + state + ' player:' + (player ? 'alive:'+player.alive+' x:'+Math.round(player.x)+' y:'+Math.round(player.y) : 'null'), 10, 20);
     if (state === 'paused') {
         ctx.fillStyle = 'rgba(0,0,0,0.6)';
         ctx.fillRect(0, 0, 640, 640);
