@@ -147,8 +147,7 @@ function mkTank(cx, cy, dir, color, isP) {
 }
 
 function spawnPlayer() {
-    player = mkTank(8, ROWS - 2, 0, '#2d2', true);
-    player.flash = 60;
+    player = mkTank(8, ROWS - 2, 0, '#fff', true);
 }
 
 function spawnEnemy() {
@@ -357,7 +356,6 @@ function drawTile(r, c) {
 
 function drawTank(t) {
     if (!t || !t.alive) return;
-    if (t.flash > 0 && t.flash % 4 < 2) return;
     const cx = t.x + t.w/2, cy = t.y + t.h/2;
     ctx.save();
     ctx.translate(cx, cy);
@@ -381,28 +379,28 @@ function drawTank(t) {
 
     // Body
     ctx.fillStyle = t.color;
-    ctx.fillRect(-t.w/2 + 6, -t.h/2 + 2, t.w - 12, t.h - 4);
+    ctx.fillRect(-t.w/2 + 4, -t.h/2 + 2, t.w - 8, t.h - 4);
 
     // Outline
     ctx.strokeStyle = '#000';
-    ctx.lineWidth = 2;
-    ctx.strokeRect(-t.w/2 + 6, -t.h/2 + 2, t.w - 12, t.h - 4);
+    ctx.lineWidth = 3;
+    ctx.strokeRect(-t.w/2 + 4, -t.h/2 + 2, t.w - 8, t.h - 4);
 
     // Turret
-    ctx.fillStyle = t.isP ? '#1a1' : '#a00';
+    ctx.fillStyle = t.isP ? '#4f4' : '#f44';
     ctx.beginPath();
-    ctx.arc(0, 0, 8, 0, Math.PI * 2);
+    ctx.arc(0, 0, 9, 0, Math.PI * 2);
     ctx.fill();
     ctx.strokeStyle = '#000';
-    ctx.lineWidth = 1.5;
+    ctx.lineWidth = 2;
     ctx.stroke();
 
     // Barrel
-    ctx.fillStyle = '#555';
-    ctx.fillRect(-3, -t.h/2 - 6, 6, t.h/2 + 2);
+    ctx.fillStyle = t.isP ? '#4f4' : '#f44';
+    ctx.fillRect(-3, -t.h/2 - 8, 6, t.h/2 + 4);
     ctx.strokeStyle = '#000';
-    ctx.lineWidth = 1;
-    ctx.strokeRect(-3, -t.h/2 - 6, 6, t.h/2 + 2);
+    ctx.lineWidth = 2;
+    ctx.strokeRect(-3, -t.h/2 - 8, 6, t.h/2 + 4);
 
     ctx.restore();
 }
