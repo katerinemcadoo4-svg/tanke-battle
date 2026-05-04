@@ -2,468 +2,419 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Tank Battle</title>
 <style>
 * { margin: 0; padding: 0; box-sizing: border-box; }
-body {
-    background: #222;
-    display: flex;
-    justify-content: center;
-    align-items: center;
-    min-height: 100vh;
-    font-family: 'Courier New', monospace;
-    color: #fff;
-}
-#gameContainer { display: flex; gap: 16px; align-items: flex-start; position: relative; }
-canvas { border: 3px solid #888; display: block; background: #000; }
-#sidebar {
-    width: 170px;
-    background: #333;
-    border: 3px solid #888;
-    padding: 16px;
-    font-size: 15px;
-    line-height: 2;
-}
-#sidebar h3 { color: #ff0; margin-bottom: 8px; font-size: 18px; }
-.sl { color: #ccc; }
-.sv { color: #0f0; font-weight: bold; float: right; }
-#sidebar hr { border-color: #555; margin: 10px 0; }
-#sidebar .help { color: #bbb; font-size: 13px; }
-#overlay {
-    position: absolute; top: 0; left: 0;
-    width: 100%; height: 100%;
-    background: rgba(0,0,0,0.85);
-    display: flex; flex-direction: column;
-    justify-content: center; align-items: center;
-    z-index: 10;
-}
-#overlay h2 { font-size: 42px; color: #f44; margin-bottom: 16px; text-shadow: 2px 2px #000; }
-#overlay p { font-size: 18px; color: #ddd; margin: 4px 0; }
-.blink { font-size: 22px; color: #4f4; margin-top: 28px; animation: bl 1s infinite; }
-@keyframes bl { 50% { opacity: 0.2; } }
+body { background: #333; display: flex; justify-content: center; align-items: center; min-height: 100vh; font-family: monospace; }
+#wrap { display: flex; gap: 12px; }
+canvas { border: 3px solid #888; display: block; }
+#side { width: 170px; background: #222; border: 3px solid #888; padding: 14px; color: #fff; font-size: 15px; line-height: 2.2; }
+#side h3 { color: #ff0; font-size: 18px; margin-bottom: 6px; }
+#side .sl { color: #ccc; }
+#side .sv { color: #0f0; font-weight: bold; float: right; }
+#side hr { border-color: #555; margin: 8px 0; }
+#side .h { color: #aaa; font-size: 13px; }
+#msg { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.85); display: flex; flex-direction: column; justify-content: center; align-items: center; z-index: 99; color: #fff; }
+#msg h2 { font-size: 44px; color: #f44; margin-bottom: 12px; }
+#msg p { font-size: 18px; color: #ddd; margin: 4px 0; }
+.blink { font-size: 22px; color: #4f4; margin-top: 24px; animation: b 1s infinite; }
+@keyframes b { 50% { opacity: 0.2; } }
 </style>
 </head>
 <body>
-<div id="gameContainer">
-    <canvas id="gameCanvas" width="640" height="640"></canvas>
-    <div id="sidebar">
+<div id="wrap">
+    <canvas id="cv" width="640" height="640"></canvas>
+    <div id="side">
         <h3>TANK BATTLE</h3>
-        <div><span class="sl">Score</span><span class="sv" id="sScore">0</span></div>
-        <div><span class="sl">Lives</span><span class="sv" id="sLives">3</span></div>
-        <div><span class="sl">Level</span><span class="sv" id="sLevel">1</span></div>
-        <div><span class="sl">Enemies</span><span class="sv" id="sEnemy">0</span></div>
+        <div><span class="sl">Score</span><span class="sv" id="v1">0</span></div>
+        <div><span class="sl">Lives</span><span class="sv" id="v2">3</span></div>
+        <div><span class="sl">Level</span><span class="sv" id="v3">1</span></div>
+        <div><span class="sl">Enemies</span><span class="sv" id="v4">0</span></div>
         <hr>
-        <div class="help">
+        <div class="h">
             W A S D - Move<br>
             Space - Shoot<br>
             P - Pause<br>
             R - Restart
         </div>
     </div>
-    <div id="overlay">
-        <h2>TANK BATTLE</h2>
-        <p>WASD to move, Space to shoot</p>
-        <p>Destroy all enemy tanks!</p>
-        <div class="blink">Press ENTER to Start</div>
-    </div>
+</div>
+<div id="msg">
+    <h2>TANK BATTLE</h2>
+    <p>WASD to move, Space to shoot</p>
+    <p>Destroy all enemy tanks!</p>
+    <div class="blink">Press ENTER to Start</div>
 </div>
 
 <script>
-const canvas = document.getElementById('gameCanvas');
-const ctx = canvas.getContext('2d');
-const overlay = document.getElementById('overlay');
-const T = 32;
-const COLS = 20, ROWS = 20;
+var cv = document.getElementById('cv');
+var cx = cv.getContext('2d');
+var msg = document.getElementById('msg');
+var T = 32, W = 20, H = 20;
+var EMPTY=0, BRICK=1, STEEL=2, WATER=3, BASE=4;
 
-const EMPTY = 0, BRICK = 1, STEEL = 2, WATER = 3, BASE = 4;
-let state = 'menu', score = 0, lives = 3, level = 1;
-let player, enemies = [], bullets = [], explosions = [];
-let map = [], spawnTimer = 0, enemyCount = 0, spawned = 0, total = 10;
-let keys = {};
+var state = 'menu';
+var score = 0, lives = 3, level = 1;
+var player = null;
+var enemies = [];
+var bullets = [];
+var booms = [];
+var map = [];
+var spawnT = 0, spawned = 0, total = 10, left = 10;
+var keys = {};
 
-const maps = [
-    [
-        [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
-        [0,0,1,1,0,0,1,1,0,0,0,0,1,1,0,0,1,1,0,0],
-        [0,0,1,1,0,0,1,1,0,0,0,0,1,1,0,0,1,1,0,0],
-        [0,0,0,0,0,0,0,0,0,1,1,0,0,0,0,0,0,0,0,0],
-        [1,1,0,0,2,2,0,0,1,1,1,1,0,0,2,2,0,0,1,1],
-        [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
-        [0,0,1,1,0,1,1,0,0,0,0,0,0,1,1,0,1,1,0,0],
-        [0,0,1,1,0,1,1,0,0,0,0,0,0,1,1,0,1,1,0,0],
-        [0,0,0,0,0,0,0,0,1,0,0,1,0,0,0,0,0,0,0,0],
-        [2,0,0,0,1,1,0,0,0,0,0,0,0,0,1,1,0,0,0,2],
-        [0,0,0,0,1,1,0,0,0,0,0,0,0,0,1,1,0,0,0,0],
-        [0,0,0,0,0,0,0,0,1,0,0,1,0,0,0,0,0,0,0,0],
-        [0,0,1,1,0,1,1,0,0,0,0,0,0,1,1,0,1,1,0,0],
-        [0,0,1,1,0,1,1,0,0,0,0,0,0,1,1,0,1,1,0,0],
-        [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
-        [1,1,0,0,2,2,0,0,1,1,1,1,0,0,2,2,0,0,1,1],
-        [0,0,0,0,0,0,0,0,0,1,1,0,0,0,0,0,0,0,0,0],
-        [0,0,1,1,0,0,1,1,0,0,0,0,1,1,0,0,1,1,0,0],
-        [0,0,1,1,0,0,0,0,0,1,1,0,0,0,0,1,1,0,0,0],
-        [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
-    ],
-    [
-        [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
-        [1,1,0,1,1,0,1,1,0,0,0,0,1,1,0,1,1,0,1,1],
-        [0,0,0,0,0,0,0,0,0,1,1,0,0,0,0,0,0,0,0,0],
-        [0,1,1,0,0,2,2,0,0,0,0,0,0,2,2,0,0,1,1,0],
-        [0,0,0,0,0,0,0,0,1,1,1,1,0,0,0,0,0,0,0,0],
-        [1,0,0,1,0,0,0,0,0,0,0,0,0,0,0,0,1,0,0,1],
-        [0,0,0,0,0,1,1,0,0,0,0,0,0,1,1,0,0,0,0,0],
-        [0,1,0,0,0,1,1,0,3,3,3,3,0,1,1,0,0,0,1,0],
-        [2,0,0,1,0,0,0,0,0,0,0,0,0,0,0,0,1,0,0,2],
-        [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
-        [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
-        [2,0,0,1,0,0,0,0,0,0,0,0,0,0,0,0,1,0,0,2],
-        [0,1,0,0,0,1,1,0,3,3,3,3,0,1,1,0,0,0,1,0],
-        [0,0,0,0,0,1,1,0,0,0,0,0,0,1,1,0,0,0,0,0],
-        [1,0,0,1,0,0,0,0,0,0,0,0,0,0,0,0,1,0,0,1],
-        [0,0,0,0,0,0,0,0,1,1,1,1,0,0,0,0,0,0,0,0],
-        [0,1,1,0,0,2,2,0,0,0,0,0,0,2,2,0,0,1,1,0],
-        [0,0,0,0,0,0,0,0,0,1,1,0,0,0,0,0,0,0,0,0],
-        [1,1,0,1,1,0,1,1,0,0,0,0,1,1,0,1,1,0,1,1],
-        [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
-    ]
+var MAPS = [
+  [
+    [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+    [0,0,1,1,0,0,1,1,0,0,0,0,1,1,0,0,1,1,0,0],
+    [0,0,1,1,0,0,1,1,0,0,0,0,1,1,0,0,1,1,0,0],
+    [0,0,0,0,0,0,0,0,0,1,1,0,0,0,0,0,0,0,0,0],
+    [1,1,0,0,2,2,0,0,1,1,1,1,0,0,2,2,0,0,1,1],
+    [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+    [0,0,1,1,0,1,1,0,0,0,0,0,0,1,1,0,1,1,0,0],
+    [0,0,1,1,0,1,1,0,0,0,0,0,0,1,1,0,1,1,0,0],
+    [0,0,0,0,0,0,0,0,1,0,0,1,0,0,0,0,0,0,0,0],
+    [2,0,0,0,1,1,0,0,0,0,0,0,0,0,1,1,0,0,0,2],
+    [0,0,0,0,1,1,0,0,0,0,0,0,0,0,1,1,0,0,0,0],
+    [0,0,0,0,0,0,0,0,1,0,0,1,0,0,0,0,0,0,0,0],
+    [0,0,1,1,0,1,1,0,0,0,0,0,0,1,1,0,1,1,0,0],
+    [0,0,1,1,0,1,1,0,0,0,0,0,0,1,1,0,1,1,0,0],
+    [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+    [1,1,0,0,2,2,0,0,1,1,1,1,0,0,2,2,0,0,1,1],
+    [0,0,0,0,0,0,0,0,0,1,1,0,0,0,0,0,0,0,0,0],
+    [0,0,1,1,0,0,1,1,0,0,0,0,1,1,0,0,1,1,0,0],
+    [0,0,1,1,0,0,0,0,0,0,0,0,0,0,0,1,1,0,0,0],
+    [0,0,0,0,0,0,0,0,0,1,1,0,0,0,0,0,0,0,0,0]
+  ],
+  [
+    [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+    [1,1,0,1,1,0,1,1,0,0,0,0,1,1,0,1,1,0,1,1],
+    [0,0,0,0,0,0,0,0,0,1,1,0,0,0,0,0,0,0,0,0],
+    [0,1,1,0,0,2,2,0,0,0,0,0,0,2,2,0,0,1,1,0],
+    [0,0,0,0,0,0,0,0,1,1,1,1,0,0,0,0,0,0,0,0],
+    [1,0,0,1,0,0,0,0,0,0,0,0,0,0,0,0,1,0,0,1],
+    [0,0,0,0,0,1,1,0,0,0,0,0,0,1,1,0,0,0,0,0],
+    [0,1,0,0,0,1,1,0,3,3,3,3,0,1,1,0,0,0,1,0],
+    [2,0,0,1,0,0,0,0,0,0,0,0,0,0,0,0,1,0,0,2],
+    [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+    [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+    [2,0,0,1,0,0,0,0,0,0,0,0,0,0,0,0,1,0,0,2],
+    [0,1,0,0,0,1,1,0,3,3,3,3,0,1,1,0,0,0,1,0],
+    [0,0,0,0,0,1,1,0,0,0,0,0,0,1,1,0,0,0,0,0],
+    [1,0,0,1,0,0,0,0,0,0,0,0,0,0,0,0,1,0,0,1],
+    [0,0,0,0,0,0,0,0,1,1,1,1,0,0,0,0,0,0,0,0],
+    [0,1,1,0,0,2,2,0,0,0,0,0,0,2,2,0,0,1,1,0],
+    [0,0,0,0,0,0,0,0,0,1,1,0,0,0,0,0,0,0,0,0],
+    [1,1,0,1,1,0,1,1,0,0,0,0,1,1,0,1,1,0,1,1],
+    [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0]
+  ]
 ];
 
+// Pre-initialize map so draw() doesn't crash before game starts
+function initMap() {
+    map = [];
+    for (var r = 0; r < H; r++) {
+        map[r] = [];
+        for (var c = 0; c < W; c++) map[r][c] = 0;
+    }
+}
+initMap();
+
 function loadMap(n) {
-    map = maps[(n - 1) % maps.length].map(r => [...r]);
-    map[ROWS-1][9] = BASE;
-    map[ROWS-1][10] = BASE;
+    map = [];
+    var src = MAPS[(n-1) % MAPS.length];
+    for (var r = 0; r < H; r++) {
+        map[r] = [];
+        for (var c = 0; c < W; c++) map[r][c] = src[r][c];
+    }
+    map[H-1][9] = BASE;
+    map[H-1][10] = BASE;
 }
 
-function mkTank(cx, cy, dir, color, isP) {
-    return {
-        x: cx * T, y: cy * T, w: T - 2, h: T - 2,
-        dir, color, isP,
-        spd: isP ? 3 : 1.5,
-        cd: 0, rate: isP ? 12 : 70,
-        alive: true,
-        aiDir: dir, aiT: 0, flash: 0
-    };
+function mkTank(gx, gy, dir, color, isP) {
+    return { x:gx*T+1, y:gy*T+1, w:T-2, h:T-2, dir:dir, color:color, isP:isP,
+             spd:isP?3:1.5, cd:0, rate:isP?12:70, alive:true,
+             aiD:dir, aiT:0 };
 }
 
-function spawnPlayer() {
-    player = mkTank(8, ROWS - 2, 0, '#fff', true);
+function spawnP() {
+    player = mkTank(8, H-2, 0, '#fff', true);
 }
 
-function spawnEnemy() {
+function spawnE() {
     if (spawned >= total) return;
-    const spots = [[1, 1], [10, 1], [18, 1]];
-    const s = spots[spawned % 3];
-    for (let e of enemies)
-        if (Math.abs(e.x - s[0]*T) < T && Math.abs(e.y - s[1]*T) < T) return;
-    const colors = ['#e22', '#e80', '#e2e', '#ee0'];
-    const e = mkTank(s[0], s[1], 2, colors[spawned % 4], false);
-    e.spd = 1 + Math.random();
-    e.rate = 50 + Math.floor(Math.random() * 50);
+    var spots = [[1,1],[10,1],[18,1]];
+    var s = spots[spawned % 3];
+    for (var i=0;i<enemies.length;i++) {
+        var e=enemies[i];
+        if (e.alive && Math.abs(e.x-s[0]*T)<T && Math.abs(e.y-s[1]*T)<T) return;
+    }
+    var cols = ['#e22','#e80','#e2e','#ee0'];
+    var e = mkTank(s[0], s[1], 2, cols[spawned%4], false);
+    e.spd = 1+Math.random();
+    e.rate = 50+Math.floor(Math.random()*50);
     enemies.push(e);
     spawned++;
 }
 
 function init() {
-    score = 0; lives = 3; level = 1;
-    enemies = []; bullets = []; explosions = [];
-    spawned = 0; total = 8 + level * 2; enemyCount = total;
-    spawnTimer = 0;
+    score=0; lives=3; level=1;
+    enemies=[]; bullets=[]; booms=[];
+    spawned=0; total=8+level*2; left=total; spawnT=0;
     loadMap(level);
-    spawnPlayer();
-    ui();
+    spawnP();
+    updUI();
 }
 
-function nextLvl() {
+function nextLv() {
     level++;
-    enemies = []; bullets = []; explosions = [];
-    spawned = 0; total = 8 + level * 2; enemyCount = total;
-    spawnTimer = 0;
+    enemies=[]; bullets=[]; booms=[];
+    spawned=0; total=8+level*2; left=total; spawnT=0;
     loadMap(level);
-    spawnPlayer();
-    ui();
+    spawnP();
+    updUI();
 }
 
-function ui() {
-    document.getElementById('sScore').textContent = score;
-    document.getElementById('sLives').textContent = lives;
-    document.getElementById('sLevel').textContent = level;
-    document.getElementById('sEnemy').textContent = enemyCount;
+function updUI() {
+    document.getElementById('v1').textContent=score;
+    document.getElementById('v2').textContent=lives;
+    document.getElementById('v3').textContent=level;
+    document.getElementById('v4').textContent=left;
 }
 
-function dirOff(d) {
-    return d === 0 ? {dx:0,dy:-1} : d === 1 ? {dx:1,dy:0} : d === 2 ? {dx:0,dy:1} : {dx:-1,dy:0};
+function dOff(d) {
+    if(d===0)return{dx:0,dy:-1};
+    if(d===1)return{dx:1,dy:0};
+    if(d===2)return{dx:0,dy:1};
+    return{dx:-1,dy:0};
 }
 
-function canGo(t, dx, dy) {
-    const nx = t.x + dx, ny = t.y + dy;
-    if (nx < 0 || ny < 0 || nx + t.w > 640 || ny + t.h > 640) return false;
-    const c1 = Math.floor(nx / T), r1 = Math.floor(ny / T);
-    const c2 = Math.floor((nx + t.w) / T), r2 = Math.floor((ny + t.h) / T);
-    for (let r = r1; r <= r2; r++)
-        for (let c = c1; c <= c2; c++) {
-            if (r < 0 || r >= ROWS || c < 0 || c >= COLS) continue;
-            const v = map[r][c];
-            if (v === BRICK || v === STEEL || v === WATER || v === BASE) return false;
-        }
-    const all = [player, ...enemies].filter(o => o && o.alive && o !== t);
-    for (let o of all)
-        if (nx < o.x + o.w && nx + t.w > o.x && ny < o.y + o.h && ny + t.h > o.y) return false;
+function canGo(t,dx,dy) {
+    var nx=t.x+dx, ny=t.y+dy;
+    if(nx<0||ny<0||nx+t.w>640||ny+t.h>640) return false;
+    var c1=Math.floor(nx/T), r1=Math.floor(ny/T);
+    var c2=Math.floor((nx+t.w)/T), r2=Math.floor((ny+t.h)/T);
+    for(var r=r1;r<=r2;r++) for(var c=c1;c<=c2;c++) {
+        if(r<0||r>=H||c<0||c>=W) continue;
+        var v=map[r][c];
+        if(v===BRICK||v===STEEL||v===WATER||v===BASE) return false;
+    }
+    var all = enemies.filter(function(o){return o.alive&&o!==t;});
+    if(player && player.alive && player!==t) all.push(player);
+    for(var i=0;i<all.length;i++) {
+        var o=all[i];
+        if(nx<o.x+o.w&&nx+t.w>o.x&&ny<o.y+o.h&&ny+t.h>o.y) return false;
+    }
     return true;
 }
 
-function moveTank(t, d) {
-    t.dir = d;
-    const {dx, dy} = dirOff(d);
-    if (canGo(t, dx * t.spd, dy * t.spd)) {
-        t.x += dx * t.spd;
-        t.y += dy * t.spd;
-    }
+function moveT(t,d) {
+    t.dir=d;
+    var o=dOff(d);
+    if(canGo(t,o.dx*t.spd,o.dy*t.spd)) { t.x+=o.dx*t.spd; t.y+=o.dy*t.spd; }
 }
 
-function shoot(t) {
-    if (t.cd > 0) return;
-    t.cd = t.rate;
-    const {dx, dy} = dirOff(t.dir);
-    bullets.push({
-        x: t.x + t.w/2 - 3 + dx * (t.w/2 + 4),
-        y: t.y + t.h/2 - 3 + dy * (t.h/2 + 4),
-        w: 6, h: 6, dx: dx * 6, dy: dy * 6,
-        isP: t.isP, alive: true
-    });
+function fire(t) {
+    if(t.cd>0) return;
+    t.cd=t.rate;
+    var o=dOff(t.dir);
+    bullets.push({x:t.x+t.w/2-3+o.dx*(t.w/2+4),y:t.y+t.h/2-3+o.dy*(t.h/2+4),
+                  w:6,h:6,dx:o.dx*6,dy:o.dy*6,isP:t.isP,alive:true});
 }
 
-function boom(x, y, big) {
-    explosions.push({x, y, r: big ? 8 : 4, mr: big ? 28 : 16, t: big ? 22 : 14});
-}
+function boom(x,y,big) { booms.push({x:x,y:y,r:big?6:3,mr:big?26:14,t:big?20:12}); }
 
-function ai(e) {
+function aiE(e) {
     e.aiT--;
-    if (e.aiT <= 0) {
-        const r = Math.random();
-        e.aiDir = r < 0.35 ? 2 : r < 0.5 ? 0 : r < 0.75 ? Math.floor(Math.random() * 4) : e.aiDir;
-        e.aiT = 20 + Math.floor(Math.random() * 50);
+    if(e.aiT<=0) {
+        var r=Math.random();
+        e.aiD=r<0.35?2:r<0.5?0:r<0.75?Math.floor(Math.random()*4):e.aiD;
+        e.aiT=20+Math.floor(Math.random()*50);
     }
-    moveTank(e, e.aiDir);
-    if (Math.random() < 0.025) shoot(e);
+    moveT(e,e.aiD);
+    if(Math.random()<0.025) fire(e);
 }
 
-function updateBullets() {
-    for (let b of bullets) {
-        if (!b.alive) continue;
-        b.x += b.dx; b.y += b.dy;
-        if (b.x < 0 || b.y < 0 || b.x > 640 || b.y > 640) { b.alive = false; continue; }
-        const col = Math.floor((b.x + 3) / T), row = Math.floor((b.y + 3) / T);
-        if (row >= 0 && row < ROWS && col >= 0 && col < COLS) {
-            const v = map[row][col];
-            if (v === BRICK) { map[row][col] = EMPTY; b.alive = false; boom(col*T+T/2, row*T+T/2, false); continue; }
-            if (v === STEEL) { b.alive = false; boom(b.x, b.y, false); continue; }
-            if (v === BASE) { map[row][col] = EMPTY; b.alive = false; boom(col*T+T/2, row*T+T/2, true); state = 'gameover'; showOL('GAME OVER', 'Base destroyed! Score: ' + score); return; }
+function updB() {
+    for(var i=0;i<bullets.length;i++) {
+        var b=bullets[i];
+        if(!b.alive) continue;
+        b.x+=b.dx; b.y+=b.dy;
+        if(b.x<0||b.y<0||b.x>640||b.y>640){b.alive=false;continue;}
+        var col=Math.floor((b.x+3)/T), row=Math.floor((b.y+3)/T);
+        if(row>=0&&row<H&&col>=0&&col<W) {
+            var v=map[row][col];
+            if(v===BRICK){map[row][col]=EMPTY;b.alive=false;boom(col*T+T/2,row*T+T/2,false);continue;}
+            if(v===STEEL){b.alive=false;boom(b.x,b.y,false);continue;}
+            if(v===BASE){map[row][col]=EMPTY;b.alive=false;boom(col*T+T/2,row*T+T/2,true);
+                state='gameover';showMsg('GAME OVER','Base destroyed! Score: '+score);return;}
         }
-        if (b.isP) {
-            for (let e of enemies) {
-                if (!e.alive) continue;
-                if (b.x < e.x+e.w && b.x+b.w > e.x && b.y < e.y+e.h && b.y+b.h > e.y) {
-                    b.alive = false; e.alive = false;
-                    boom(e.x+e.w/2, e.y+e.h/2, true);
-                    score += 100; enemyCount--; ui(); break;
+        if(b.isP) {
+            for(var j=0;j<enemies.length;j++) {
+                var e=enemies[j];
+                if(!e.alive) continue;
+                if(b.x<e.x+e.w&&b.x+b.w>e.x&&b.y<e.y+e.h&&b.y+b.h>e.y) {
+                    b.alive=false;e.alive=false;boom(e.x+e.w/2,e.y+e.h/2,true);
+                    score+=100;left--;updUI();break;
                 }
             }
-        } else if (player && player.alive && player.flash <= 0) {
-            if (b.x < player.x+player.w && b.x+b.w > player.x && b.y < player.y+player.h && b.y+b.h > player.y) {
-                b.alive = false; player.alive = false;
-                boom(player.x+player.w/2, player.y+player.h/2, true);
-                lives--; ui();
-                if (lives <= 0) { state = 'gameover'; showOL('GAME OVER', 'Score: ' + score); }
-                else setTimeout(spawnPlayer, 800);
+        } else if(player&&player.alive) {
+            if(b.x<player.x+player.w&&b.x+b.w>player.x&&b.y<player.y+player.h&&b.y+b.h>player.y) {
+                b.alive=false;player.alive=false;boom(player.x+player.w/2,player.y+player.h/2,true);
+                lives--;updUI();
+                if(lives<=0){state='gameover';showMsg('GAME OVER','Score: '+score);}
+                else setTimeout(spawnP,800);
             }
         }
     }
-    bullets = bullets.filter(b => b.alive);
+    bullets=bullets.filter(function(b){return b.alive;});
 }
 
-function showOL(title, sub) {
-    overlay.innerHTML = '<h2>' + title + '</h2><p>' + sub + '</p><div class="blink">Press ENTER</div>';
-    overlay.style.display = 'flex';
+function showMsg(t,s) {
+    msg.innerHTML='<h2>'+t+'</h2><p>'+s+'</p><div class="blink">Press ENTER</div>';
+    msg.style.display='flex';
 }
 
 function update() {
-    if (state !== 'playing') return;
-    if (player && player.alive) {
-        if (keys['w'] || keys['W'] || keys['ArrowUp']) moveTank(player, 0);
-        if (keys['d'] || keys['D'] || keys['ArrowRight']) moveTank(player, 1);
-        if (keys['s'] || keys['S'] || keys['ArrowDown']) moveTank(player, 2);
-        if (keys['a'] || keys['A'] || keys['ArrowLeft']) moveTank(player, 3);
-        if (keys[' ']) shoot(player);
-        if (player.cd > 0) player.cd--;
-        if (player.flash > 0) player.flash--;
+    if(state!=='playing') return;
+    if(player&&player.alive) {
+        if(keys['w']||keys['W']||keys['ArrowUp']) moveT(player,0);
+        if(keys['d']||keys['D']||keys['ArrowRight']) moveT(player,1);
+        if(keys['s']||keys['S']||keys['ArrowDown']) moveT(player,2);
+        if(keys['a']||keys['A']||keys['ArrowLeft']) moveT(player,3);
+        if(keys[' ']) fire(player);
+        if(player.cd>0) player.cd--;
     }
-    spawnTimer--;
-    if (spawnTimer <= 0 && spawned < total && enemies.filter(e => e.alive).length < 4) {
-        spawnEnemy(); spawnTimer = 100;
+    spawnT--;
+    if(spawnT<=0&&spawned<total) {
+        var alive=enemies.filter(function(e){return e.alive;}).length;
+        if(alive<4){spawnE();spawnT=100;}
     }
-    for (let e of enemies) { if (!e.alive) continue; ai(e); if (e.cd > 0) e.cd--; }
-    enemies = enemies.filter(e => e.alive);
-    updateBullets();
-    for (let e of explosions) { e.t--; e.r += (e.mr - e.r) * 0.25; }
-    explosions = explosions.filter(e => e.t > 0);
-    if (enemyCount <= 0 && enemies.length === 0) {
-        if (level >= 3) { state = 'win'; showOL('YOU WIN!', 'Score: ' + score); }
-        else nextLvl();
+    for(var i=0;i<enemies.length;i++){var e=enemies[i];if(!e.alive)continue;aiE(e);if(e.cd>0)e.cd--;}
+    enemies=enemies.filter(function(e){return e.alive;});
+    updB();
+    for(var i=0;i<booms.length;i++){booms[i].t--;booms[i].r+=(booms[i].mr-booms[i].r)*0.25;}
+    booms=booms.filter(function(e){return e.t>0;});
+    if(left<=0&&enemies.length===0) {
+        if(level>=3){state='win';showMsg('YOU WIN!','Score: '+score);}
+        else nextLv();
     }
 }
 
-// --- Drawing ---
+// --- DRAW ---
 
-function drawGround() {
-    ctx.fillStyle = '#c8c8a0';
-    ctx.fillRect(0, 0, 640, 640);
-}
+function draw() {
+    // Ground
+    cx.fillStyle = '#c8c8a0';
+    cx.fillRect(0, 0, 640, 640);
 
-function drawTile(r, c) {
-    const x = c * T, y = r * T, v = map[r][c];
-    if (v === BRICK) {
-        ctx.fillStyle = '#b06030';
-        ctx.fillRect(x, y, T, T);
-        ctx.strokeStyle = '#804020';
-        ctx.lineWidth = 1;
-        for (let i = 0; i < T; i += 8) { ctx.beginPath(); ctx.moveTo(x, y+i); ctx.lineTo(x+T, y+i); ctx.stroke(); }
-        for (let i = 0; i < T; i += 16) { ctx.beginPath(); ctx.moveTo(x+i, y); ctx.lineTo(x+i, y+T); ctx.stroke(); }
-    } else if (v === STEEL) {
-        ctx.fillStyle = '#aaa';
-        ctx.fillRect(x, y, T, T);
-        ctx.fillStyle = '#ddd';
-        ctx.fillRect(x+2, y+2, T-4, T-4);
-        ctx.strokeStyle = '#666';
-        ctx.lineWidth = 1;
-        ctx.strokeRect(x+4, y+4, T-8, T-8);
-    } else if (v === WATER) {
-        ctx.fillStyle = '#2266cc';
-        ctx.fillRect(x, y, T, T);
-        ctx.fillStyle = '#4488ee';
-        for (let i = 0; i < 3; i++) ctx.fillRect(x+4, y+4+i*10, T-8, 4);
-    } else if (v === BASE) {
-        ctx.fillStyle = '#ffcc00';
-        ctx.fillRect(x, y, T, T);
-        ctx.fillStyle = '#ff6600';
-        ctx.font = 'bold 22px monospace';
-        ctx.fillText('E', x+7, y+24);
-        ctx.strokeStyle = '#cc0000';
-        ctx.lineWidth = 2;
-        ctx.strokeRect(x+1, y+1, T-2, T-2);
+    // Map tiles
+    for(var r=0;r<H;r++) for(var c=0;c<W;c++) {
+        var x=c*T, y=r*T, v=map[r][c];
+        if(v===BRICK) {
+            cx.fillStyle='#b06030'; cx.fillRect(x,y,T,T);
+            cx.strokeStyle='#804020'; cx.lineWidth=1;
+            for(var i=0;i<T;i+=8){cx.beginPath();cx.moveTo(x,y+i);cx.lineTo(x+T,y+i);cx.stroke();}
+            for(var i=0;i<T;i+=16){cx.beginPath();cx.moveTo(x+i,y);cx.lineTo(x+i,y+T);cx.stroke();}
+        } else if(v===STEEL) {
+            cx.fillStyle='#aaa'; cx.fillRect(x,y,T,T);
+            cx.fillStyle='#ddd'; cx.fillRect(x+2,y+2,T-4,T-4);
+        } else if(v===WATER) {
+            cx.fillStyle='#26c'; cx.fillRect(x,y,T,T);
+            cx.fillStyle='#48e';
+            for(var i=0;i<3;i++) cx.fillRect(x+4,y+4+i*10,T-8,4);
+        } else if(v===BASE) {
+            cx.fillStyle='#fc0'; cx.fillRect(x,y,T,T);
+            cx.strokeStyle='#c00'; cx.lineWidth=2; cx.strokeRect(x+1,y+1,T-2,T-2);
+            cx.fillStyle='#f60'; cx.font='bold 22px monospace'; cx.fillText('E',x+7,y+24);
+        }
     }
+
+    // Player tank
+    if(player && player.alive) drawTank(player);
+
+    // Enemy tanks
+    for(var i=0;i<enemies.length;i++) if(enemies[i].alive) drawTank(enemies[i]);
+
+    // Bullets
+    cx.fillStyle='#fff';
+    for(var i=0;i<bullets.length;i++) {
+        var b=bullets[i]; if(!b.alive) continue;
+        cx.fillRect(b.x,b.y,b.w,b.h);
+    }
+
+    // Explosions
+    for(var i=0;i<booms.length;i++) {
+        var e=booms[i];
+        cx.globalAlpha=e.t/20;
+        var g=cx.createRadialGradient(e.x,e.y,0,e.x,e.y,e.r);
+        g.addColorStop(0,'#fff');g.addColorStop(0.3,'#ff0');g.addColorStop(0.7,'#f80');g.addColorStop(1,'#f00');
+        cx.fillStyle=g;cx.beginPath();cx.arc(e.x,e.y,e.r,0,Math.PI*2);cx.fill();
+        cx.globalAlpha=1;
+    }
+
+    // Paused overlay
+    if(state==='paused') {
+        cx.fillStyle='rgba(0,0,0,0.6)';cx.fillRect(0,0,640,640);
+        cx.fillStyle='#fff';cx.font='bold 40px monospace';cx.fillText('PAUSED',230,330);
+    }
+
 }
 
 function drawTank(t) {
-    if (!t || !t.alive) return;
-    const cx = t.x + t.w/2, cy = t.y + t.h/2;
-    ctx.save();
-    ctx.translate(cx, cy);
-    ctx.rotate(t.dir * Math.PI / 2);
+    var cx2=t.x+t.w/2, cy=t.y+t.h/2;
+    cx.save();
+    cx.translate(cx2,cy);
+    cx.rotate(t.dir*Math.PI/2);
 
     // Shadow
-    ctx.fillStyle = 'rgba(0,0,0,0.25)';
-    ctx.fillRect(-t.w/2 + 3, -t.h/2 + 3, t.w, t.h);
+    cx.fillStyle='rgba(0,0,0,0.2)';
+    cx.fillRect(-t.w/2+3,-t.h/2+3,t.w,t.h);
 
     // Tracks
-    ctx.fillStyle = '#444';
-    ctx.fillRect(-t.w/2, -t.h/2, 6, t.h);
-    ctx.fillRect(t.w/2 - 6, -t.h/2, 6, t.h);
-    // Track detail
-    ctx.strokeStyle = '#222';
-    ctx.lineWidth = 1;
-    for (let i = -t.h/2; i < t.h/2; i += 5) {
-        ctx.beginPath(); ctx.moveTo(-t.w/2, i); ctx.lineTo(-t.w/2+6, i); ctx.stroke();
-        ctx.beginPath(); ctx.moveTo(t.w/2-6, i); ctx.lineTo(t.w/2, i); ctx.stroke();
-    }
+    cx.fillStyle='#444';
+    cx.fillRect(-t.w/2,-t.h/2,6,t.h);
+    cx.fillRect(t.w/2-6,-t.h/2,6,t.h);
 
     // Body
-    ctx.fillStyle = t.color;
-    ctx.fillRect(-t.w/2 + 4, -t.h/2 + 2, t.w - 8, t.h - 4);
-
-    // Outline
-    ctx.strokeStyle = '#000';
-    ctx.lineWidth = 3;
-    ctx.strokeRect(-t.w/2 + 4, -t.h/2 + 2, t.w - 8, t.h - 4);
+    cx.fillStyle=t.color;
+    cx.fillRect(-t.w/2+4,-t.h/2+2,t.w-8,t.h-4);
+    cx.strokeStyle='#000';cx.lineWidth=3;
+    cx.strokeRect(-t.w/2+4,-t.h/2+2,t.w-8,t.h-4);
 
     // Turret
-    ctx.fillStyle = t.isP ? '#4f4' : '#f44';
-    ctx.beginPath();
-    ctx.arc(0, 0, 9, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.strokeStyle = '#000';
-    ctx.lineWidth = 2;
-    ctx.stroke();
+    cx.fillStyle=t.isP?'#4f4':'#f44';
+    cx.beginPath();cx.arc(0,0,9,0,Math.PI*2);cx.fill();
+    cx.strokeStyle='#000';cx.lineWidth=2;cx.stroke();
 
     // Barrel
-    ctx.fillStyle = t.isP ? '#4f4' : '#f44';
-    ctx.fillRect(-3, -t.h/2 - 8, 6, t.h/2 + 4);
-    ctx.strokeStyle = '#000';
-    ctx.lineWidth = 2;
-    ctx.strokeRect(-3, -t.h/2 - 8, 6, t.h/2 + 4);
+    cx.fillStyle=t.isP?'#4f4':'#f44';
+    cx.fillRect(-3,-t.h/2-8,6,t.h/2+4);
+    cx.strokeStyle='#000';cx.lineWidth=2;
+    cx.strokeRect(-3,-t.h/2-8,6,t.h/2+4);
 
-    ctx.restore();
-}
-
-function drawBullet(b) {
-    ctx.fillStyle = '#fff';
-    ctx.fillRect(b.x, b.y, b.w, b.h);
-    ctx.fillStyle = b.isP ? '#ff0' : '#f44';
-    ctx.fillRect(b.x + 1, b.y + 1, b.w - 2, b.h - 2);
-}
-
-function drawExplosion(e) {
-    const a = e.t / 22;
-    ctx.globalAlpha = a;
-    const g = ctx.createRadialGradient(e.x, e.y, 0, e.x, e.y, e.r);
-    g.addColorStop(0, '#fff');
-    g.addColorStop(0.3, '#ff0');
-    g.addColorStop(0.7, '#f80');
-    g.addColorStop(1, '#f00');
-    ctx.fillStyle = g;
-    ctx.beginPath();
-    ctx.arc(e.x, e.y, e.r, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.globalAlpha = 1;
-}
-
-function draw() {
-    drawGround();
-    for (let r = 0; r < ROWS; r++)
-        for (let c = 0; c < COLS; c++)
-            drawTile(r, c);
-    drawTank(player);
-    for (let e of enemies) drawTank(e);
-    for (let b of bullets) drawBullet(b);
-    for (let e of explosions) drawExplosion(e);
-
-    // Debug: show player status
-    ctx.fillStyle = '#000';
-    ctx.font = '16px monospace';
-    ctx.fillText('state:' + state + ' player:' + (player ? 'alive:'+player.alive+' x:'+Math.round(player.x)+' y:'+Math.round(player.y) : 'null'), 10, 20);
-    if (state === 'paused') {
-        ctx.fillStyle = 'rgba(0,0,0,0.6)';
-        ctx.fillRect(0, 0, 640, 640);
-        ctx.fillStyle = '#fff';
-        ctx.font = 'bold 40px monospace';
-        ctx.fillText('PAUSED', 230, 330);
-    }
+    cx.restore();
 }
 
 function loop() { update(); draw(); requestAnimationFrame(loop); }
 
-document.addEventListener('keydown', e => {
-    keys[e.key] = true;
-    if (e.key === 'Enter' && state !== 'playing' && state !== 'paused') {
-        overlay.style.display = 'none'; state = 'playing'; init();
+document.addEventListener('keydown', function(e) {
+    keys[e.key]=true;
+    if(e.key==='Enter') {
+        if(state==='menu'||state==='gameover'||state==='win') {
+            msg.style.display='none'; state='playing'; init();
+        }
     }
-    if ((e.key === 'p' || e.key === 'P') && (state === 'playing' || state === 'paused'))
-        state = state === 'playing' ? 'paused' : 'playing';
-    if ((e.key === 'r' || e.key === 'R') && state !== 'menu')
-        { overlay.style.display = 'none'; state = 'playing'; init(); }
-    if (e.key === ' ') e.preventDefault();
+    if(e.key==='p'||e.key==='P') {
+        if(state==='playing') state='paused';
+        else if(state==='paused') state='playing';
+    }
+    if(e.key==='r'||e.key==='R') {
+        if(state!=='menu') { msg.style.display='none'; state='playing'; init(); }
+    }
+    if(e.key===' ') e.preventDefault();
 });
-document.addEventListener('keyup', e => { keys[e.key] = false; });
+document.addEventListener('keyup', function(e) { keys[e.key]=false; });
 
 loop();
 </script>
