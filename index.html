@@ -1,422 +1,786 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-<meta charset="UTF-8">
-<title>Tank Battle</title>
-<style>
-* { margin: 0; padding: 0; box-sizing: border-box; }
-body { background: #333; display: flex; justify-content: center; align-items: center; min-height: 100vh; font-family: monospace; }
-#wrap { display: flex; gap: 12px; }
-canvas { border: 3px solid #888; display: block; }
-#side { width: 170px; background: #222; border: 3px solid #888; padding: 14px; color: #fff; font-size: 15px; line-height: 2.2; }
-#side h3 { color: #ff0; font-size: 18px; margin-bottom: 6px; }
-#side .sl { color: #ccc; }
-#side .sv { color: #0f0; font-weight: bold; float: right; }
-#side hr { border-color: #555; margin: 8px 0; }
-#side .h { color: #aaa; font-size: 13px; }
-#msg { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.85); display: flex; flex-direction: column; justify-content: center; align-items: center; z-index: 99; color: #fff; }
-#msg h2 { font-size: 44px; color: #f44; margin-bottom: 12px; }
-#msg p { font-size: 18px; color: #ddd; margin: 4px 0; }
-.blink { font-size: 22px; color: #4f4; margin-top: 24px; animation: b 1s infinite; }
-@keyframes b { 50% { opacity: 0.2; } }
-</style>
-</head>
-<body>
-<div id="wrap">
-    <canvas id="cv" width="640" height="640"></canvas>
-    <div id="side">
-        <h3>TANK BATTLE</h3>
-        <div><span class="sl">Score</span><span class="sv" id="v1">0</span></div>
-        <div><span class="sl">Lives</span><span class="sv" id="v2">3</span></div>
-        <div><span class="sl">Level</span><span class="sv" id="v3">1</span></div>
-        <div><span class="sl">Enemies</span><span class="sv" id="v4">0</span></div>
-        <hr>
-        <div class="h">
-            W A S D - Move<br>
-            Space - Shoot<br>
-            P - Pause<br>
-            R - Restart
-        </div>
-    </div>
-</div>
-<div id="msg">
-    <h2>TANK BATTLE</h2>
-    <p>WASD to move, Space to shoot</p>
-    <p>Destroy all enemy tanks!</p>
-    <div class="blink">Press ENTER to Start</div>
-</div>
 
-<script>
-var cv = document.getElementById('cv');
-var cx = cv.getContext('2d');
-var msg = document.getElementById('msg');
-var T = 32, W = 20, H = 20;
-var EMPTY=0, BRICK=1, STEEL=2, WATER=3, BASE=4;
-
-var state = 'menu';
-var score = 0, lives = 3, level = 1;
-var player = null;
-var enemies = [];
-var bullets = [];
-var booms = [];
-var map = [];
-var spawnT = 0, spawned = 0, total = 10, left = 10;
-var keys = {};
-
-var MAPS = [
-  [
-    [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
-    [0,0,1,1,0,0,1,1,0,0,0,0,1,1,0,0,1,1,0,0],
-    [0,0,1,1,0,0,1,1,0,0,0,0,1,1,0,0,1,1,0,0],
-    [0,0,0,0,0,0,0,0,0,1,1,0,0,0,0,0,0,0,0,0],
-    [1,1,0,0,2,2,0,0,1,1,1,1,0,0,2,2,0,0,1,1],
-    [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
-    [0,0,1,1,0,1,1,0,0,0,0,0,0,1,1,0,1,1,0,0],
-    [0,0,1,1,0,1,1,0,0,0,0,0,0,1,1,0,1,1,0,0],
-    [0,0,0,0,0,0,0,0,1,0,0,1,0,0,0,0,0,0,0,0],
-    [2,0,0,0,1,1,0,0,0,0,0,0,0,0,1,1,0,0,0,2],
-    [0,0,0,0,1,1,0,0,0,0,0,0,0,0,1,1,0,0,0,0],
-    [0,0,0,0,0,0,0,0,1,0,0,1,0,0,0,0,0,0,0,0],
-    [0,0,1,1,0,1,1,0,0,0,0,0,0,1,1,0,1,1,0,0],
-    [0,0,1,1,0,1,1,0,0,0,0,0,0,1,1,0,1,1,0,0],
-    [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
-    [1,1,0,0,2,2,0,0,1,1,1,1,0,0,2,2,0,0,1,1],
-    [0,0,0,0,0,0,0,0,0,1,1,0,0,0,0,0,0,0,0,0],
-    [0,0,1,1,0,0,1,1,0,0,0,0,1,1,0,0,1,1,0,0],
-    [0,0,1,1,0,0,0,0,0,0,0,0,0,0,0,1,1,0,0,0],
-    [0,0,0,0,0,0,0,0,0,1,1,0,0,0,0,0,0,0,0,0]
-  ],
-  [
-    [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
-    [1,1,0,1,1,0,1,1,0,0,0,0,1,1,0,1,1,0,1,1],
-    [0,0,0,0,0,0,0,0,0,1,1,0,0,0,0,0,0,0,0,0],
-    [0,1,1,0,0,2,2,0,0,0,0,0,0,2,2,0,0,1,1,0],
-    [0,0,0,0,0,0,0,0,1,1,1,1,0,0,0,0,0,0,0,0],
-    [1,0,0,1,0,0,0,0,0,0,0,0,0,0,0,0,1,0,0,1],
-    [0,0,0,0,0,1,1,0,0,0,0,0,0,1,1,0,0,0,0,0],
-    [0,1,0,0,0,1,1,0,3,3,3,3,0,1,1,0,0,0,1,0],
-    [2,0,0,1,0,0,0,0,0,0,0,0,0,0,0,0,1,0,0,2],
-    [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
-    [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
-    [2,0,0,1,0,0,0,0,0,0,0,0,0,0,0,0,1,0,0,2],
-    [0,1,0,0,0,1,1,0,3,3,3,3,0,1,1,0,0,0,1,0],
-    [0,0,0,0,0,1,1,0,0,0,0,0,0,1,1,0,0,0,0,0],
-    [1,0,0,1,0,0,0,0,0,0,0,0,0,0,0,0,1,0,0,1],
-    [0,0,0,0,0,0,0,0,1,1,1,1,0,0,0,0,0,0,0,0],
-    [0,1,1,0,0,2,2,0,0,0,0,0,0,2,2,0,0,1,1,0],
-    [0,0,0,0,0,0,0,0,0,1,1,0,0,0,0,0,0,0,0,0],
-    [1,1,0,1,1,0,1,1,0,0,0,0,1,1,0,1,1,0,1,1],
-    [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0]
-  ]
-];
-
-// Pre-initialize map so draw() doesn't crash before game starts
-function initMap() {
-    map = [];
-    for (var r = 0; r < H; r++) {
-        map[r] = [];
-        for (var c = 0; c < W; c++) map[r][c] = 0;
-    }
-}
-initMap();
-
-function loadMap(n) {
-    map = [];
-    var src = MAPS[(n-1) % MAPS.length];
-    for (var r = 0; r < H; r++) {
-        map[r] = [];
-        for (var c = 0; c < W; c++) map[r][c] = src[r][c];
-    }
-    map[H-1][9] = BASE;
-    map[H-1][10] = BASE;
-}
-
-function mkTank(gx, gy, dir, color, isP) {
-    return { x:gx*T+1, y:gy*T+1, w:T-2, h:T-2, dir:dir, color:color, isP:isP,
-             spd:isP?3:1.5, cd:0, rate:isP?12:70, alive:true,
-             aiD:dir, aiT:0 };
-}
-
-function spawnP() {
-    player = mkTank(8, H-2, 0, '#fff', true);
-}
-
-function spawnE() {
-    if (spawned >= total) return;
-    var spots = [[1,1],[10,1],[18,1]];
-    var s = spots[spawned % 3];
-    for (var i=0;i<enemies.length;i++) {
-        var e=enemies[i];
-        if (e.alive && Math.abs(e.x-s[0]*T)<T && Math.abs(e.y-s[1]*T)<T) return;
-    }
-    var cols = ['#e22','#e80','#e2e','#ee0'];
-    var e = mkTank(s[0], s[1], 2, cols[spawned%4], false);
-    e.spd = 1+Math.random();
-    e.rate = 50+Math.floor(Math.random()*50);
-    enemies.push(e);
-    spawned++;
-}
-
-function init() {
-    score=0; lives=3; level=1;
-    enemies=[]; bullets=[]; booms=[];
-    spawned=0; total=8+level*2; left=total; spawnT=0;
-    loadMap(level);
-    spawnP();
-    updUI();
-}
-
-function nextLv() {
-    level++;
-    enemies=[]; bullets=[]; booms=[];
-    spawned=0; total=8+level*2; left=total; spawnT=0;
-    loadMap(level);
-    spawnP();
-    updUI();
-}
-
-function updUI() {
-    document.getElementById('v1').textContent=score;
-    document.getElementById('v2').textContent=lives;
-    document.getElementById('v3').textContent=level;
-    document.getElementById('v4').textContent=left;
-}
-
-function dOff(d) {
-    if(d===0)return{dx:0,dy:-1};
-    if(d===1)return{dx:1,dy:0};
-    if(d===2)return{dx:0,dy:1};
-    return{dx:-1,dy:0};
-}
-
-function canGo(t,dx,dy) {
-    var nx=t.x+dx, ny=t.y+dy;
-    if(nx<0||ny<0||nx+t.w>640||ny+t.h>640) return false;
-    var c1=Math.floor(nx/T), r1=Math.floor(ny/T);
-    var c2=Math.floor((nx+t.w)/T), r2=Math.floor((ny+t.h)/T);
-    for(var r=r1;r<=r2;r++) for(var c=c1;c<=c2;c++) {
-        if(r<0||r>=H||c<0||c>=W) continue;
-        var v=map[r][c];
-        if(v===BRICK||v===STEEL||v===WATER||v===BASE) return false;
-    }
-    var all = enemies.filter(function(o){return o.alive&&o!==t;});
-    if(player && player.alive && player!==t) all.push(player);
-    for(var i=0;i<all.length;i++) {
-        var o=all[i];
-        if(nx<o.x+o.w&&nx+t.w>o.x&&ny<o.y+o.h&&ny+t.h>o.y) return false;
-    }
-    return true;
-}
-
-function moveT(t,d) {
-    t.dir=d;
-    var o=dOff(d);
-    if(canGo(t,o.dx*t.spd,o.dy*t.spd)) { t.x+=o.dx*t.spd; t.y+=o.dy*t.spd; }
-}
-
-function fire(t) {
-    if(t.cd>0) return;
-    t.cd=t.rate;
-    var o=dOff(t.dir);
-    bullets.push({x:t.x+t.w/2-3+o.dx*(t.w/2+4),y:t.y+t.h/2-3+o.dy*(t.h/2+4),
-                  w:6,h:6,dx:o.dx*6,dy:o.dy*6,isP:t.isP,alive:true});
-}
-
-function boom(x,y,big) { booms.push({x:x,y:y,r:big?6:3,mr:big?26:14,t:big?20:12}); }
-
-function aiE(e) {
-    e.aiT--;
-    if(e.aiT<=0) {
-        var r=Math.random();
-        e.aiD=r<0.35?2:r<0.5?0:r<0.75?Math.floor(Math.random()*4):e.aiD;
-        e.aiT=20+Math.floor(Math.random()*50);
-    }
-    moveT(e,e.aiD);
-    if(Math.random()<0.025) fire(e);
-}
-
-function updB() {
-    for(var i=0;i<bullets.length;i++) {
-        var b=bullets[i];
-        if(!b.alive) continue;
-        b.x+=b.dx; b.y+=b.dy;
-        if(b.x<0||b.y<0||b.x>640||b.y>640){b.alive=false;continue;}
-        var col=Math.floor((b.x+3)/T), row=Math.floor((b.y+3)/T);
-        if(row>=0&&row<H&&col>=0&&col<W) {
-            var v=map[row][col];
-            if(v===BRICK){map[row][col]=EMPTY;b.alive=false;boom(col*T+T/2,row*T+T/2,false);continue;}
-            if(v===STEEL){b.alive=false;boom(b.x,b.y,false);continue;}
-            if(v===BASE){map[row][col]=EMPTY;b.alive=false;boom(col*T+T/2,row*T+T/2,true);
-                state='gameover';showMsg('GAME OVER','Base destroyed! Score: '+score);return;}
+&lt;!DOCTYPE html&gt;
+&lt;html lang="zh-CN"&gt;
+&lt;head&gt;
+    &lt;meta charset="UTF-8"&gt;
+    &lt;meta name="viewport" content="width=device-width, initial-scale=1.0"&gt;
+    &lt;title&gt;梅花易数 - 传统占卜&lt;/title&gt;
+    &lt;style&gt;
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
         }
-        if(b.isP) {
-            for(var j=0;j<enemies.length;j++) {
-                var e=enemies[j];
-                if(!e.alive) continue;
-                if(b.x<e.x+e.w&&b.x+b.w>e.x&&b.y<e.y+e.h&&b.y+b.h>e.y) {
-                    b.alive=false;e.alive=false;boom(e.x+e.w/2,e.y+e.h/2,true);
-                    score+=100;left--;updUI();break;
+        
+        body {
+            font-family: "Microsoft YaHei", "SimSun", serif;
+            background: linear-gradient(135deg, #fdf2f8 0%, #fef3c7 50%, #ffedd5 100%);
+            min-height: 100vh;
+            color: #7c2d12;
+        }
+        
+        .navbar {
+            background: linear-gradient(90deg, #991b1b, #b45309);
+            padding: 1rem 2rem;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.3);
+        }
+        
+        .nav-container {
+            max-width: 1200px;
+            margin: 0 auto;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        
+        .logo {
+            color: white;
+            font-size: 1.8rem;
+            font-weight: bold;
+            text-decoration: none;
+        }
+        
+        .nav-links {
+            display: flex;
+            gap: 2rem;
+        }
+        
+        .nav-link {
+            color: #fef3c7;
+            text-decoration: none;
+            font-size: 1.1rem;
+            padding: 0.5rem 1rem;
+            border-radius: 8px;
+            transition: all 0.3s;
+        }
+        
+        .nav-link:hover, .nav-link.active {
+            background: #f59e0b;
+            color: white;
+        }
+        
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 2rem;
+        }
+        
+        .header {
+            text-align: center;
+            margin-bottom: 3rem;
+        }
+        
+        .header h1 {
+            font-size: 3rem;
+            color: #991b1b;
+            margin-bottom: 1rem;
+            text-shadow: 2px 2px 4px rgba(0,0,0,0.1);
+        }
+        
+        .header p {
+            font-size: 1.3rem;
+            color: #b45309;
+        }
+        
+        .cast-section {
+            display: flex;
+            justify-content: center;
+            margin-bottom: 3rem;
+        }
+        
+        .cast-btn {
+            background: linear-gradient(135deg, #991b1b, #b45309);
+            color: white;
+            border: 4px solid #f59e0b;
+            padding: 1.5rem 3rem;
+            font-size: 1.8rem;
+            font-weight: bold;
+            border-radius: 50px;
+            cursor: pointer;
+            box-shadow: 0 8px 30px rgba(153, 27, 27, 0.4);
+            transition: all 0.3s;
+        }
+        
+        .cast-btn:hover {
+            transform: scale(1.05);
+            box-shadow: 0 12px 40px rgba(153, 27, 27, 0.6);
+        }
+        
+        .cast-btn:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+        }
+        
+        .hexagrams-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 2rem;
+            margin-bottom: 2rem;
+        }
+        
+        .hexagram-card {
+            background: linear-gradient(145deg, #fef3c7, #ffedd5);
+            border: 3px solid #f59e0b;
+            border-radius: 16px;
+            padding: 1.5rem;
+            box-shadow: 0 8px 25px rgba(0,0,0,0.15);
+            text-align: center;
+        }
+        
+        .hexagram-title {
+            font-size: 1.3rem;
+            font-weight: bold;
+            color: #92400e;
+            margin-bottom: 1rem;
+        }
+        
+        .trigram-display {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            margin: 1rem 0;
+        }
+        
+        .trigram {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+        
+        .trigram-row {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        
+        .yang-line {
+            width: 80px;
+            height: 12px;
+            background: #991b1b;
+            border-radius: 6px;
+        }
+        
+        .yin-line {
+            display: flex;
+            gap: 12px;
+        }
+        
+        .yin-segment {
+            width: 34px;
+            height: 12px;
+            background: #991b1b;
+            border-radius: 6px;
+        }
+        
+        .trigram-label {
+            font-size: 1.1rem;
+            color: #b45309;
+            font-weight: bold;
+        }
+        
+        .hexagram-name {
+            font-size: 1.8rem;
+            font-weight: bold;
+            color: #991b1b;
+            margin-top: 1rem;
+        }
+        
+        .changing-lines {
+            font-size: 0.9rem;
+            color: #78350f;
+            margin-top: 0.5rem;
+        }
+        
+        .interpretation-section {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(400px, 1fr));
+            gap: 2rem;
+            margin: 2rem 0;
+        }
+        
+        .interpretation-card {
+            background: linear-gradient(145deg, #fdf2f8, #fce7f3);
+            border: 3px solid #f472b6;
+            border-radius: 16px;
+            padding: 2rem;
+            box-shadow: 0 8px 25px rgba(0,0,0,0.1);
+        }
+        
+        .interpretation-card.blue {
+            background: linear-gradient(145deg, #eff6ff, #dbeafe);
+            border-color: #60a5fa;
+        }
+        
+        .interpretation-title {
+            font-size: 1.4rem;
+            font-weight: bold;
+            color: #be185d;
+            margin-bottom: 1rem;
+        }
+        
+        .interpretation-card.blue .interpretation-title {
+            color: #1d4ed8;
+        }
+        
+        .interpretation-text {
+            font-size: 1.1rem;
+            line-height: 1.8;
+            color: #831843;
+        }
+        
+        .interpretation-card.blue .interpretation-text {
+            color: #1e40af;
+        }
+        
+        .lines-section {
+            background: linear-gradient(145deg, #faf5ff, #f3e8ff);
+            border: 3px solid #a78bfa;
+            border-radius: 16px;
+            padding: 2rem;
+            box-shadow: 0 8px 25px rgba(0,0,0,0.1);
+            margin: 2rem 0;
+        }
+        
+        .lines-title {
+            font-size: 1.4rem;
+            font-weight: bold;
+            color: #7c3aed;
+            margin-bottom: 1.5rem;
+            text-align: center;
+        }
+        
+        .lines-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+            gap: 1rem;
+        }
+        
+        .line-card {
+            background: white;
+            border: 2px solid #c4b5fd;
+            border-radius: 12px;
+            padding: 1rem;
+            text-align: center;
+        }
+        
+        .line-card.changing {
+            background: #fef3c7;
+            border-color: #f59e0b;
+        }
+        
+        .line-number {
+            font-weight: bold;
+            color: #7c3aed;
+            margin-bottom: 0.5rem;
+        }
+        
+        .line-text {
+            font-size: 0.9rem;
+            color: #6d28d9;
+        }
+        
+        .refresh-section {
+            display: flex;
+            justify-content: center;
+            margin: 2rem 0;
+        }
+        
+        .refresh-btn {
+            background: linear-gradient(135deg, #059669, #10b981);
+            color: white;
+            border: none;
+            padding: 1rem 2rem;
+            font-size: 1.2rem;
+            font-weight: bold;
+            border-radius: 50px;
+            cursor: pointer;
+            box-shadow: 0 6px 20px rgba(5, 150, 105, 0.4);
+            transition: all 0.3s;
+        }
+        
+        .refresh-btn:hover {
+            transform: scale(1.05);
+        }
+        
+        .hint {
+            text-align: center;
+            font-size: 1.2rem;
+            color: #b45309;
+            margin-top: 2rem;
+        }
+        
+        /* 八卦百科样式 */
+        .bagua-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 2rem;
+            margin-bottom: 3rem;
+        }
+        
+        .bagua-card {
+            background: linear-gradient(145deg, #fef3c7, #ffedd5);
+            border: 3px solid #f59e0b;
+            border-radius: 16px;
+            padding: 2rem;
+            text-align: center;
+            box-shadow: 0 8px 25px rgba(0,0,0,0.1);
+            transition: transform 0.3s;
+        }
+        
+        .bagua-card:hover {
+            transform: scale(1.05);
+        }
+        
+        .bagua-name {
+            font-size: 1.8rem;
+            font-weight: bold;
+            color: #991b1b;
+            margin-bottom: 0.5rem;
+        }
+        
+        .bagua-symbol {
+            font-size: 3rem;
+            margin: 1rem 0;
+        }
+        
+        .bagua-info {
+            margin: 0.5rem 0;
+            color: #92400e;
+        }
+        
+        .bagua-meaning {
+            font-size: 0.95rem;
+            color: #78350f;
+            line-height: 1.6;
+        }
+        
+        .intro-section {
+            background: linear-gradient(145deg, #faf5ff, #f3e8ff);
+            border: 3px solid #a78bfa;
+            border-radius: 16px;
+            padding: 2.5rem;
+            margin-bottom: 2rem;
+        }
+        
+        .intro-title {
+            font-size: 1.8rem;
+            font-weight: bold;
+            color: #7c3aed;
+            text-align: center;
+            margin-bottom: 1.5rem;
+        }
+        
+        .intro-content {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(350px, 1fr));
+            gap: 2rem;
+        }
+        
+        .intro-text {
+            color: #6d28d9;
+            line-height: 1.8;
+            font-size: 1.05rem;
+        }
+        
+        .hidden {
+            display: none !important;
+        }
+        
+        @media (max-width: 768px) {
+            .header h1 {
+                font-size: 2rem;
+            }
+            
+            .cast-btn {
+                font-size: 1.3rem;
+                padding: 1rem 2rem;
+            }
+            
+            .nav-links {
+                gap: 1rem;
+            }
+        }
+    &lt;/style&gt;
+&lt;/head&gt;
+&lt;body&gt;
+    &lt;nav class="navbar"&gt;
+        &lt;div class="nav-container"&gt;
+            &lt;a href="#" class="logo"&gt;⚡ 梅花易数&lt;/a&gt;
+            &lt;div class="nav-links"&gt;
+                &lt;a href="#" class="nav-link active" onclick="showPage('home')"&gt;起卦&lt;/a&gt;
+                &lt;a href="#" class="nav-link" onclick="showPage('bagua')"&gt;八卦百科&lt;/a&gt;
+            &lt;/div&gt;
+        &lt;/div&gt;
+    &lt;/nav&gt;
+
+    &lt;div class="container"&gt;
+        &lt;!-- 起卦页面 --&gt;
+        &lt;div id="home-page"&gt;
+            &lt;div class="header"&gt;
+                &lt;h1&gt;梅花易数&lt;/h1&gt;
+                &lt;p&gt;探索天地奥秘，指引人生方向&lt;/p&gt;
+            &lt;/div&gt;
+
+            &lt;div class="cast-section"&gt;
+                &lt;button class="cast-btn" id="castBtn" onclick="castHexagram()"&gt;
+                    点击起卦
+                &lt;/button&gt;
+            &lt;/div&gt;
+
+            &lt;div id="result-section" class="hidden"&gt;
+                &lt;div class="hexagrams-grid"&gt;
+                    &lt;div class="hexagram-card"&gt;
+                        &lt;div class="hexagram-title"&gt;本卦&lt;/div&gt;
+                        &lt;div class="trigram-display"&gt;
+                            &lt;div class="trigram-label" id="original-upper-label"&gt;&lt;/div&gt;
+                            &lt;div class="trigram" id="original-upper"&gt;&lt;/div&gt;
+                            &lt;div style="width: 60px; height: 2px; background: #f59e0b; margin: 8px 0;"&gt;&lt;/div&gt;
+                            &lt;div class="trigram" id="original-lower"&gt;&lt;/div&gt;
+                            &lt;div class="trigram-label" id="original-lower-label"&gt;&lt;/div&gt;
+                        &lt;/div&gt;
+                        &lt;div class="hexagram-name" id="original-name"&gt;&lt;/div&gt;
+                        &lt;div class="changing-lines" id="changing-lines"&gt;&lt;/div&gt;
+                    &lt;/div&gt;
+
+                    &lt;div class="hexagram-card"&gt;
+                        &lt;div class="hexagram-title"&gt;互卦&lt;/div&gt;
+                        &lt;div class="trigram-display"&gt;
+                            &lt;div class="trigram-label" id="mutual-upper-label"&gt;&lt;/div&gt;
+                            &lt;div class="trigram" id="mutual-upper"&gt;&lt;/div&gt;
+                            &lt;div style="width: 60px; height: 2px; background: #f59e0b; margin: 8px 0;"&gt;&lt;/div&gt;
+                            &lt;div class="trigram" id="mutual-lower"&gt;&lt;/div&gt;
+                            &lt;div class="trigram-label" id="mutual-lower-label"&gt;&lt;/div&gt;
+                        &lt;/div&gt;
+                        &lt;div class="hexagram-name"&gt;互卦&lt;/div&gt;
+                    &lt;/div&gt;
+
+                    &lt;div class="hexagram-card"&gt;
+                        &lt;div class="hexagram-title"&gt;变卦&lt;/div&gt;
+                        &lt;div class="trigram-display"&gt;
+                            &lt;div class="trigram-label" id="changed-upper-label"&gt;&lt;/div&gt;
+                            &lt;div class="trigram" id="changed-upper"&gt;&lt;/div&gt;
+                            &lt;div style="width: 60px; height: 2px; background: #f59e0b; margin: 8px 0;"&gt;&lt;/div&gt;
+                            &lt;div class="trigram" id="changed-lower"&gt;&lt;/div&gt;
+                            &lt;div class="trigram-label" id="changed-lower-label"&gt;&lt;/div&gt;
+                        &lt;/div&gt;
+                        &lt;div class="hexagram-name" id="changed-name"&gt;&lt;/div&gt;
+                    &lt;/div&gt;
+                &lt;/div&gt;
+
+                &lt;div class="interpretation-section"&gt;
+                    &lt;div class="interpretation-card"&gt;
+                        &lt;div class="interpretation-title"&gt;卦辞&lt;/div&gt;
+                        &lt;div class="interpretation-text" id="judgement"&gt;&lt;/div&gt;
+                    &lt;/div&gt;
+                    &lt;div class="interpretation-card blue"&gt;
+                        &lt;div class="interpretation-title"&gt;现代解读&lt;/div&gt;
+                        &lt;div class="interpretation-text" id="interpretation"&gt;&lt;/div&gt;
+                    &lt;/div&gt;
+                &lt;/div&gt;
+
+                &lt;div class="lines-section"&gt;
+                    &lt;div class="lines-title"&gt;爻辞&lt;/div&gt;
+                    &lt;div class="lines-grid" id="lines-grid"&gt;&lt;/div&gt;
+                &lt;/div&gt;
+
+                &lt;div class="refresh-section"&gt;
+                    &lt;button class="refresh-btn" onclick="resetAndCast()"&gt;再次起卦&lt;/button&gt;
+                &lt;/div&gt;
+            &lt;/div&gt;
+
+            &lt;div class="hint" id="hint"&gt;
+                心诚则灵，默念心中之事，点击上方按钮起卦
+            &lt;/div&gt;
+        &lt;/div&gt;
+
+        &lt;!-- 八卦百科页面 --&gt;
+        &lt;div id="bagua-page" class="hidden"&gt;
+            &lt;div class="header"&gt;
+                &lt;h1&gt;八卦百科&lt;/h1&gt;
+                &lt;p&gt;探索八卦的奥秘，了解传统文化的精髓&lt;/p&gt;
+            &lt;/div&gt;
+
+            &lt;div class="intro-section"&gt;
+                &lt;div class="intro-title"&gt;八卦的起源&lt;/div&gt;
+                &lt;div class="intro-content"&gt;
+                    &lt;div&gt;
+                        &lt;h3 style="color: #7c3aed; margin-bottom: 0.5rem;"&gt;伏羲画卦&lt;/h3&gt;
+                        &lt;p class="intro-text"&gt;
+                            相传八卦是由上古时期的伏羲氏所创。伏羲观察天地万物的变化，
+                            用阴阳两种符号组合成八种基本图形，用以象征自然界的各种现象。
+                        &lt;/p&gt;
+                    &lt;/div&gt;
+                    &lt;div&gt;
+                        &lt;h3 style="color: #7c3aed; margin-bottom: 0.5rem;"&gt;阴阳哲学&lt;/h3&gt;
+                        &lt;p class="intro-text"&gt;
+                            八卦的核心是阴阳二元对立统一的思想。阳爻代表刚健、积极、光明，
+                            阴爻代表柔顺、消极、黑暗。两者相互作用，产生万物变化。
+                        &lt;/p&gt;
+                    &lt;/div&gt;
+                &lt;/div&gt;
+                &lt;div style="margin-top: 1.5rem;"&gt;
+                    &lt;h3 style="color: #7c3aed; margin-bottom: 0.5rem;"&gt;八卦与六十四卦&lt;/h3&gt;
+                    &lt;p class="intro-text"&gt;
+                        将两个八卦上下重叠，就形成了六十四卦。每卦由六爻组成，
+                        通过爻的变化来推测事物的发展规律。六十四卦是《周易》的核心内容，
+                        被广泛应用于占卜、哲学、医学等领域。
+                    &lt;/p&gt;
+                &lt;/div&gt;
+            &lt;/div&gt;
+
+            &lt;div class="bagua-grid" id="bagua-grid"&gt;&lt;/div&gt;
+        &lt;/div&gt;
+    &lt;/div&gt;
+
+    &lt;script&gt;
+        // 八卦数据
+        const TRIGRAMS = {
+            qian: { name: '乾', symbol: '☰', binary: '111', element: '天', meaning: '刚健、积极、创造', number: 1 },
+            dui: { name: '兑', symbol: '☱', binary: '110', element: '泽', meaning: '喜悦、沟通、残缺', number: 2 },
+            li: { name: '离', symbol: '☲', binary: '101', element: '火', meaning: '光明、依附、文明', number: 3 },
+            zhen: { name: '震', symbol: '☳', binary: '100', element: '雷', meaning: '动、恐惧、崛起', number: 4 },
+            xun: { name: '巽', symbol: '☴', binary: '011', element: '风', meaning: '入、谦逊、分散', number: 5 },
+            kan: { name: '坎', symbol: '☵', binary: '010', element: '水', meaning: '险、陷、智慧', number: 6 },
+            gen: { name: '艮', symbol: '☶', binary: '001', element: '山', meaning: '止、稳重、阻碍', number: 7 },
+            kun: { name: '坤', symbol: '☷', binary: '000', element: '地', meaning: '柔顺、承载、滋养', number: 8 }
+        };
+
+        // 六十四卦数据
+        const HEXAGRAMS = {
+            '111111': { name: '乾为天', judgement: '元亨利贞', lines: ['潜龙勿用', '见龙在田', '终日乾乾', '或跃在渊', '飞龙在天', '亢龙有悔'] },
+            '000000': { name: '坤为地', judgement: '元亨，利牝马之贞', lines: ['履霜坚冰至', '直方大', '含章可贞', '括囊无咎', '黄裳元吉', '龙战于野'] },
+            '100010': { name: '水雷屯', judgement: '元亨利贞，勿用有攸往', lines: ['磐桓利居贞', '屯如邅如', '即鹿无虞', '乘马班如', '屯其膏', '乘马班如'] },
+            '010001': { name: '山水蒙', judgement: '亨，匪我求童蒙', lines: ['发蒙利用刑人', '包蒙吉', '勿用取女', '困蒙吝', '童蒙吉', '击蒙不利为寇'] },
+            '111010': { name: '水天需', judgement: '有孚，光亨贞吉', lines: ['需于郊', '需于沙', '需于泥', '需于血', '需于酒食', '入于穴'] },
+            '010111': { name: '天水讼', judgement: '有孚窒惕，中吉', lines: ['不永所事', '不克讼归而逋', '食旧德', '不克讼复即命', '讼元吉', '或锡之鞶带'] },
+            '010000': { name: '地水师', judgement: '贞，丈人吉', lines: ['师出以律', '在师中吉', '师或舆尸', '师左次', '田有禽', '大君有命'] },
+            '000010': { name: '水地比', judgement: '吉，原筮元永贞', lines: ['有孚比之', '比之自内', '比之匪人', '外比之', '显比', '比之无首'] }
+        };
+
+        // 现代解读
+        const INTERPRETATIONS = [
+            '近期事业上会有新的机遇，需要保持积极的心态去把握。',
+            '感情方面可能会遇到一些波折，但只要真诚沟通就能化解。',
+            '财运上宜守不宜进，避免冒险投资。',
+            '健康方面需要注意休息，避免过度劳累。',
+            '人际关系上会遇到贵人相助，要保持谦逊。',
+            '学业上需要更加努力，才能取得好成绩。'
+        ];
+
+        let currentResult = null;
+
+        // 随机数生成
+        function getRandom(max) {
+            return Math.floor(Math.random() * max) + 1;
+        }
+
+        // 根据数字获取八卦
+        function getTrigramByNumber(num) {
+            const adjusted = ((num - 1) % 8) + 1;
+            const entries = Object.entries(TRIGRAMS);
+            const found = entries.find(([key, t]) =&gt; t.number === adjusted);
+            return found ? found[0] : 'qian';
+        }
+
+        // 生成变爻
+        function generateChangingLines() {
+            const lines = [];
+            for (let i = 0; i &lt; 6; i++) {
+                const num = getRandom(4);
+                if (num === 1 || num === 4) {
+                    lines.push(i);
                 }
             }
-        } else if(player&&player.alive) {
-            if(b.x<player.x+player.w&&b.x+b.w>player.x&&b.y<player.y+player.h&&b.y+b.h>player.y) {
-                b.alive=false;player.alive=false;boom(player.x+player.w/2,player.y+player.h/2,true);
-                lives--;updUI();
-                if(lives<=0){state='gameover';showMsg('GAME OVER','Score: '+score);}
-                else setTimeout(spawnP,800);
+            return lines;
+        }
+
+        // 生成卦象
+        function generateHexagram() {
+            const upperNum = getRandom(8);
+            const lowerNum = getRandom(8);
+            const upperTrigram = getTrigramByNumber(upperNum);
+            const lowerTrigram = getTrigramByNumber(lowerNum);
+            
+            const upperBinary = TRIGRAMS[upperTrigram].binary;
+            const lowerBinary = TRIGRAMS[lowerTrigram].binary;
+            const hexagramBinary = upperBinary + lowerBinary;
+            
+            const changingLines = generateChangingLines();
+            
+            let changedBinary = hexagramBinary.split('');
+            changingLines.forEach(index =&gt; {
+                changedBinary[index] = changedBinary[index] === '0' ? '1' : '0';
+            });
+            const changedHexagramBinary = changedBinary.join('');
+            
+            const mutualBinary = hexagramBinary.slice(1, 4) + hexagramBinary.slice(2, 5);
+            
+            return {
+                original: {
+                    binary: hexagramBinary,
+                    upperTrigram,
+                    lowerTrigram,
+                    name: HEXAGRAMS[hexagramBinary] ? HEXAGRAMS[hexagramBinary].name : TRIGRAMS[upperTrigram].name + TRIGRAMS[lowerTrigram].name,
+                    judgement: HEXAGRAMS[hexagramBinary] ? HEXAGRAMS[hexagramBinary].judgement : '元亨利贞',
+                    lines: HEXAGRAMS[hexagramBinary] ? HEXAGRAMS[hexagramBinary].lines : ['初九', '九二', '九三', '九四', '九五', '上九']
+                },
+                changed: {
+                    binary: changedHexagramBinary,
+                    upperTrigram: getTrigramByNumber(parseInt(changedHexagramBinary.slice(0, 3), 2) + 1),
+                    lowerTrigram: getTrigramByNumber(parseInt(changedHexagramBinary.slice(3, 6), 2) + 1),
+                    name: HEXAGRAMS[changedHexagramBinary] ? HEXAGRAMS[changedHexagramBinary].name : '变卦'
+                },
+                mutual: {
+                    binary: mutualBinary,
+                    upperTrigram: getTrigramByNumber(parseInt(mutualBinary.slice(0, 3), 2) + 1),
+                    lowerTrigram: getTrigramByNumber(parseInt(mutualBinary.slice(3, 6), 2) + 1)
+                },
+                changingLines
+            };
+        }
+
+        // 渲染八卦图形
+        function renderTrigram(containerId, trigramKey) {
+            const container = document.getElementById(containerId);
+            const trigram = TRIGRAMS[trigramKey];
+            container.innerHTML = '';
+            
+            trigram.binary.split('').forEach(line =&gt; {
+                const row = document.createElement('div');
+                row.className = 'trigram-row';
+                
+                if (line === '1') {
+                    const yang = document.createElement('div');
+                    yang.className = 'yang-line';
+                    row.appendChild(yang);
+                } else {
+                    const yin = document.createElement('div');
+                    yin.className = 'yin-line';
+                    const seg1 = document.createElement('div');
+                    seg1.className = 'yin-segment';
+                    const seg2 = document.createElement('div');
+                    seg2.className = 'yin-segment';
+                    yin.appendChild(seg1);
+                    yin.appendChild(seg2);
+                    row.appendChild(yin);
+                }
+                
+                container.appendChild(row);
+            });
+        }
+
+        // 渲染结果
+        function renderResult(result) {
+            // 本卦
+            renderTrigram('original-upper', result.original.upperTrigram);
+            renderTrigram('original-lower', result.original.lowerTrigram);
+            document.getElementById('original-upper-label').textContent = TRIGRAMS[result.original.upperTrigram].element;
+            document.getElementById('original-lower-label').textContent = TRIGRAMS[result.original.lowerTrigram].element;
+            document.getElementById('original-name').textContent = result.original.name;
+            
+            if (result.changingLines.length &gt; 0) {
+                document.getElementById('changing-lines').textContent = '变爻: ' + result.changingLines.map(i =&gt; i + 1).join(', ');
+            } else {
+                document.getElementById('changing-lines').textContent = '';
+            }
+            
+            // 互卦
+            renderTrigram('mutual-upper', result.mutual.upperTrigram);
+            renderTrigram('mutual-lower', result.mutual.lowerTrigram);
+            document.getElementById('mutual-upper-label').textContent = TRIGRAMS[result.mutual.upperTrigram].element;
+            document.getElementById('mutual-lower-label').textContent = TRIGRAMS[result.mutual.lowerTrigram].element;
+            
+            // 变卦
+            renderTrigram('changed-upper', result.changed.upperTrigram);
+            renderTrigram('changed-lower', result.changed.lowerTrigram);
+            document.getElementById('changed-upper-label').textContent = TRIGRAMS[result.changed.upperTrigram].element;
+            document.getElementById('changed-lower-label').textContent = TRIGRAMS[result.changed.lowerTrigram].element;
+            document.getElementById('changed-name').textContent = result.changed.name;
+            
+            // 卦辞和解读
+            document.getElementById('judgement').textContent = result.original.judgement;
+            document.getElementById('interpretation').textContent = INTERPRETATIONS[getRandom(INTERPRETATIONS.length) - 1];
+            
+            // 爻辞
+            const linesGrid = document.getElementById('lines-grid');
+            linesGrid.innerHTML = '';
+            result.original.lines.forEach((line, index) =&gt; {
+                const card = document.createElement('div');
+                card.className = 'line-card' + (result.changingLines.includes(index) ? ' changing' : '');
+                card.innerHTML = `
+                    &lt;div class="line-number"&gt;${index + 1}爻&lt;/div&gt;
+                    &lt;div class="line-text"&gt;${line}&lt;/div&gt;
+                `;
+                linesGrid.appendChild(card);
+            });
+        }
+
+        // 起卦
+        function castHexagram() {
+            const btn = document.getElementById('castBtn');
+            btn.disabled = true;
+            btn.innerHTML = '&lt;span style="display:inline-block;animation:spin 1s linear infinite;"&gt;⚡&lt;/span&gt; 起卦中...';
+            
+            setTimeout(() =&gt; {
+                currentResult = generateHexagram();
+                renderResult(currentResult);
+                
+                document.getElementById('result-section').classList.remove('hidden');
+                document.getElementById('hint').classList.add('hidden');
+                
+                btn.disabled = false;
+                btn.textContent = '点击起卦';
+            }, 1000);
+        }
+
+        // 重新起卦
+        function resetAndCast() {
+            document.getElementById('result-section').classList.add('hidden');
+            document.getElementById('hint').classList.remove('hidden');
+            currentResult = null;
+        }
+
+        // 页面切换
+        function showPage(page) {
+            document.querySelectorAll('.nav-link').forEach(link =&gt; link.classList.remove('active'));
+            
+            if (page === 'home') {
+                document.getElementById('home-page').classList.remove('hidden');
+                document.getElementById('bagua-page').classList.add('hidden');
+                event.target.classList.add('active');
+            } else {
+                document.getElementById('home-page').classList.add('hidden');
+                document.getElementById('bagua-page').classList.remove('hidden');
+                event.target.classList.add('active');
             }
         }
-    }
-    bullets=bullets.filter(function(b){return b.alive;});
-}
 
-function showMsg(t,s) {
-    msg.innerHTML='<h2>'+t+'</h2><p>'+s+'</p><div class="blink">Press ENTER</div>';
-    msg.style.display='flex';
-}
-
-function update() {
-    if(state!=='playing') return;
-    if(player&&player.alive) {
-        if(keys['w']||keys['W']||keys['ArrowUp']) moveT(player,0);
-        if(keys['d']||keys['D']||keys['ArrowRight']) moveT(player,1);
-        if(keys['s']||keys['S']||keys['ArrowDown']) moveT(player,2);
-        if(keys['a']||keys['A']||keys['ArrowLeft']) moveT(player,3);
-        if(keys[' ']) fire(player);
-        if(player.cd>0) player.cd--;
-    }
-    spawnT--;
-    if(spawnT<=0&&spawned<total) {
-        var alive=enemies.filter(function(e){return e.alive;}).length;
-        if(alive<4){spawnE();spawnT=100;}
-    }
-    for(var i=0;i<enemies.length;i++){var e=enemies[i];if(!e.alive)continue;aiE(e);if(e.cd>0)e.cd--;}
-    enemies=enemies.filter(function(e){return e.alive;});
-    updB();
-    for(var i=0;i<booms.length;i++){booms[i].t--;booms[i].r+=(booms[i].mr-booms[i].r)*0.25;}
-    booms=booms.filter(function(e){return e.t>0;});
-    if(left<=0&&enemies.length===0) {
-        if(level>=3){state='win';showMsg('YOU WIN!','Score: '+score);}
-        else nextLv();
-    }
-}
-
-// --- DRAW ---
-
-function draw() {
-    // Ground
-    cx.fillStyle = '#c8c8a0';
-    cx.fillRect(0, 0, 640, 640);
-
-    // Map tiles
-    for(var r=0;r<H;r++) for(var c=0;c<W;c++) {
-        var x=c*T, y=r*T, v=map[r][c];
-        if(v===BRICK) {
-            cx.fillStyle='#b06030'; cx.fillRect(x,y,T,T);
-            cx.strokeStyle='#804020'; cx.lineWidth=1;
-            for(var i=0;i<T;i+=8){cx.beginPath();cx.moveTo(x,y+i);cx.lineTo(x+T,y+i);cx.stroke();}
-            for(var i=0;i<T;i+=16){cx.beginPath();cx.moveTo(x+i,y);cx.lineTo(x+i,y+T);cx.stroke();}
-        } else if(v===STEEL) {
-            cx.fillStyle='#aaa'; cx.fillRect(x,y,T,T);
-            cx.fillStyle='#ddd'; cx.fillRect(x+2,y+2,T-4,T-4);
-        } else if(v===WATER) {
-            cx.fillStyle='#26c'; cx.fillRect(x,y,T,T);
-            cx.fillStyle='#48e';
-            for(var i=0;i<3;i++) cx.fillRect(x+4,y+4+i*10,T-8,4);
-        } else if(v===BASE) {
-            cx.fillStyle='#fc0'; cx.fillRect(x,y,T,T);
-            cx.strokeStyle='#c00'; cx.lineWidth=2; cx.strokeRect(x+1,y+1,T-2,T-2);
-            cx.fillStyle='#f60'; cx.font='bold 22px monospace'; cx.fillText('E',x+7,y+24);
+        // 初始化八卦百科
+        function initBagua() {
+            const grid = document.getElementById('bagua-grid');
+            Object.entries(TRIGRAMS).forEach(([key, trigram]) =&gt; {
+                const card = document.createElement('div');
+                card.className = 'bagua-card';
+                card.innerHTML = `
+                    &lt;div class="bagua-name"&gt;${trigram.name}卦&lt;/div&gt;
+                    &lt;div class="bagua-symbol"&gt;${trigram.symbol}&lt;/div&gt;
+                    &lt;div class="trigram" id="bagua-${key}"&gt;&lt;/div&gt;
+                    &lt;div class="bagua-info"&gt;&lt;strong&gt;五行:&lt;/strong&gt; ${trigram.element}&lt;/div&gt;
+                    &lt;div class="bagua-info"&gt;&lt;strong&gt;先天数:&lt;/strong&gt; ${trigram.number}&lt;/div&gt;
+                    &lt;div class="bagua-meaning"&gt;${trigram.meaning}&lt;/div&gt;
+                `;
+                grid.appendChild(card);
+                renderTrigram('bagua-' + key, key);
+            });
         }
-    }
 
-    // Player tank
-    if(player && player.alive) drawTank(player);
+        // 添加旋转动画
+        const style = document.createElement('style');
+        style.textContent = '@keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }';
+        document.head.appendChild(style);
 
-    // Enemy tanks
-    for(var i=0;i<enemies.length;i++) if(enemies[i].alive) drawTank(enemies[i]);
-
-    // Bullets
-    cx.fillStyle='#fff';
-    for(var i=0;i<bullets.length;i++) {
-        var b=bullets[i]; if(!b.alive) continue;
-        cx.fillRect(b.x,b.y,b.w,b.h);
-    }
-
-    // Explosions
-    for(var i=0;i<booms.length;i++) {
-        var e=booms[i];
-        cx.globalAlpha=e.t/20;
-        var g=cx.createRadialGradient(e.x,e.y,0,e.x,e.y,e.r);
-        g.addColorStop(0,'#fff');g.addColorStop(0.3,'#ff0');g.addColorStop(0.7,'#f80');g.addColorStop(1,'#f00');
-        cx.fillStyle=g;cx.beginPath();cx.arc(e.x,e.y,e.r,0,Math.PI*2);cx.fill();
-        cx.globalAlpha=1;
-    }
-
-    // Paused overlay
-    if(state==='paused') {
-        cx.fillStyle='rgba(0,0,0,0.6)';cx.fillRect(0,0,640,640);
-        cx.fillStyle='#fff';cx.font='bold 40px monospace';cx.fillText('PAUSED',230,330);
-    }
-
-}
-
-function drawTank(t) {
-    var cx2=t.x+t.w/2, cy=t.y+t.h/2;
-    cx.save();
-    cx.translate(cx2,cy);
-    cx.rotate(t.dir*Math.PI/2);
-
-    // Shadow
-    cx.fillStyle='rgba(0,0,0,0.2)';
-    cx.fillRect(-t.w/2+3,-t.h/2+3,t.w,t.h);
-
-    // Tracks
-    cx.fillStyle='#444';
-    cx.fillRect(-t.w/2,-t.h/2,6,t.h);
-    cx.fillRect(t.w/2-6,-t.h/2,6,t.h);
-
-    // Body
-    cx.fillStyle=t.color;
-    cx.fillRect(-t.w/2+4,-t.h/2+2,t.w-8,t.h-4);
-    cx.strokeStyle='#000';cx.lineWidth=3;
-    cx.strokeRect(-t.w/2+4,-t.h/2+2,t.w-8,t.h-4);
-
-    // Turret
-    cx.fillStyle=t.isP?'#4f4':'#f44';
-    cx.beginPath();cx.arc(0,0,9,0,Math.PI*2);cx.fill();
-    cx.strokeStyle='#000';cx.lineWidth=2;cx.stroke();
-
-    // Barrel
-    cx.fillStyle=t.isP?'#4f4':'#f44';
-    cx.fillRect(-3,-t.h/2-8,6,t.h/2+4);
-    cx.strokeStyle='#000';cx.lineWidth=2;
-    cx.strokeRect(-3,-t.h/2-8,6,t.h/2+4);
-
-    cx.restore();
-}
-
-function loop() { update(); draw(); requestAnimationFrame(loop); }
-
-document.addEventListener('keydown', function(e) {
-    keys[e.key]=true;
-    if(e.key==='Enter') {
-        if(state==='menu'||state==='gameover'||state==='win') {
-            msg.style.display='none'; state='playing'; init();
-        }
-    }
-    if(e.key==='p'||e.key==='P') {
-        if(state==='playing') state='paused';
-        else if(state==='paused') state='playing';
-    }
-    if(e.key==='r'||e.key==='R') {
-        if(state!=='menu') { msg.style.display='none'; state='playing'; init(); }
-    }
-    if(e.key===' ') e.preventDefault();
-});
-document.addEventListener('keyup', function(e) { keys[e.key]=false; });
-
-loop();
-</script>
-</body>
-</html>
+        // 页面加载完成后初始化
+        document.addEventListener('DOMContentLoaded', initBagua);
+    &lt;/script&gt;
+&lt;/body&gt;
+&lt;/html&gt;
